@@ -384,6 +384,55 @@
             to { transform: rotate(360deg); }
         }
 
+        /* Domain allowlist */
+        .domain-list {
+            list-style: none;
+            margin: 10px 0 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .domain-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 10px;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .domain-list-item span {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .domain-remove-btn {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid rgba(255, 92, 92, 0.25);
+            box-shadow: none;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .domain-remove-btn:hover {
+            background: var(--danger-100);
+            transform: none;
+        }
+
+        .domain-empty-hint {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 8px;
+            font-style: italic;
+        }
+
         /* Toggle switch */
         .switch {
             position: relative;
@@ -610,6 +659,22 @@
                         <span class="slider"></span>
                     </label>
                 </div>
+            </div>
+
+            <!-- Domain restriction panel (optional) -->
+            <div class="panel" id="domainRestrictionPanel">
+                <h3>Domain Restriction <span style="font-size:12px; color:var(--muted); font-weight:400;">(Optional)</span></h3>
+                <p style="font-size:13px; color:var(--muted); margin:6px 0 12px;">
+                    Leave empty to show the widget on all websites. Add domains to restrict the widget to specific sites only.
+                </p>
+                <label for="domainInput">Allowed domain:
+                    <span class="info-icon" title="Enter a domain like example.com (matches example.com and subdomains).">i</span>
+                </label>
+                <div class="btn-row" style="margin-top:6px;">
+                    <input type="text" id="domainInput" placeholder="example.com" style="flex:1;" />
+                    <button id="addDomainBtn" type="button">Add Domain</button>
+                </div>
+                <ul id="domainList" class="domain-list"></ul>
             </div>
 
             <!-- Step 1 panel -->

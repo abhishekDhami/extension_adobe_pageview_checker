@@ -1,12 +1,9 @@
-let widgetData = {};
-let badgeElem = null;
-let adobeAnalyticsImplemented = null;
-let extCustomTimerID = null;
 let pageIdentifier = {};
 let chartInstances = {};
 let currentDatePreset = "7d"; // default preset
 let spaDebounceTimer = null;
 const SPA_DEBOUNCE_MS = 1500; // debounce SPA navigation re-fetches
+const MINIMAL_DATE_PRESET = "7d";
 
 if (globalThis.debugExtension === undefined) {
   globalThis.debugExtension = false;
@@ -28,22 +25,16 @@ window.addEventListener("load", () => {
 });
 
 window.addEventListener("load", async () => {
-  // ---------- Checking if widget is enable ----------
   const isWidgetEnabled = await getEnableOnPageFlag();
   if (isWidgetEnabled == false) return;
 
-  // Load saved date preset
+  const isDomainAllowed = await checkCurrentDomainAllowed();
+  if (!isDomainAllowed) return;
+
   currentDatePreset = await getSavedDatePreset();
 
-  //Get page identifiers from injected script
-  await delay(1); // wait for 1 second to get the identifiers
-  window.dispatchEvent(new CustomEvent("isAdobeAnalyticsImplemented"));
+  await delay(1); // wait for injected script (window variable path resolution)
   loadWidgetOnThePage();
-});
-
-window.addEventListener("isAdobeAnalyticsImplementedResponse", (e) => {
-  if (e.detail.adobeAnalyticsImplemented) adobeAnalyticsImplemented = true;
-  else adobeAnalyticsImplemented = false;
 });
 
 window.addEventListener("pageIdentifierWindowPathValue", async (e) => {
@@ -64,11 +55,8 @@ window.addEventListener("spaNavigationDetected", (e) => {
 });
 
 async function handleSpaNavigation() {
-  // Only proceed if widget is loaded and enabled
   if (!document.getElementById("aa-extension-root")) return;
-  if (!adobeAnalyticsImplemented) return;
 
-  // Re-fetch page identifiers and update widget
   if (typeof window.refetchPageDataForSpa === "function") {
     await window.refetchPageDataForSpa();
   }
@@ -116,14 +104,43 @@ function formatLargeNumber(num) {
   return num.toLocaleString();
 }
 
-async function loadWidgetOnThePage() {
-  //load widget only if Adobe Analytics is implemented on the page
-  if (adobeAnalyticsImplemented === null) {
-    setTimeout(loadWidgetOnThePage, 3000);
-    return;
+function formatPercentChange(today, yesterday) {
+  if (!yesterday || yesterday === 0) {
+    if (!today || today === 0) return { text: "—", className: "pv-delta neutral" };
+    return { text: "▲ new", className: "pv-delta up" };
   }
-  if (adobeAnalyticsImplemented == false) return;
-  // prevent double-injection
+  const change = ((today - yesterday) / yesterday) * 100;
+  const rounded = Math.abs(change) >= 10 ? Math.round(change) : parseFloat(change.toFixed(1));
+  if (rounded > 0) return { text: `▲ +${rounded}%`, className: "pv-delta up" };
+  if (rounded < 0) return { text: `▼ ${rounded}%`, className: "pv-delta down" };
+  return { text: "— 0%", className: "pv-delta neutral" };
+}
+
+function normalizeDomainEntry(entry) {
+  return String(entry || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./, "");
+}
+
+function hostnameMatchesDomain(hostname, domain) {
+  const host = hostname.toLowerCase();
+  const normalized = normalizeDomainEntry(domain);
+  if (!normalized) return false;
+  return host === normalized || host.endsWith("." + normalized);
+}
+
+async function checkCurrentDomainAllowed() {
+  const { allowedDomains } = await chrome.storage.local.get("allowedDomains");
+  if (!allowedDomains || !Array.isArray(allowedDomains) || allowedDomains.length === 0) {
+    return true;
+  }
+  return allowedDomains.some((domain) => hostnameMatchesDomain(window.location.hostname, domain));
+}
+
+async function loadWidgetOnThePage() {
   if (document.getElementById("aa-extension-root")) {
     return;
   }
@@ -177,6 +194,85 @@ async function loadWidgetOnThePage() {
     .badge.minimal {
       width: 200px;
       max-width: 200px;
+    }
+
+    /* minimal layout — Option A */
+    .badge.minimal .minimal-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .pv-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .pv-row .pv-box {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pv-delta {
+      font-size: 10px;
+      font-weight: 600;
+      margin-top: 2px;
+      line-height: 1.2;
+    }
+
+    .pv-delta.up { color: #6dd4a8; }
+    .pv-delta.down { color: #ff7b7b; }
+    .pv-delta.neutral { color: #888; opacity: 0.8; }
+
+    .minimal-metrics-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 10px;
+      color: #aaa;
+    }
+
+    .minimal-metrics-row strong {
+      color: #75c8bb;
+      font-weight: 700;
+    }
+
+    .minimal-footer-row {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+    }
+
+    .minimal-total-box {
+      flex: 1;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .minimal-total-label {
+      font-size: 9px;
+      opacity: 0.6;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .minimal-total-value {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ccc;
+    }
+
+    .minimal-footer-row .pv-box {
+      flex: 0 0 56px;
     }
 
     /* small (today/yesterday) */
@@ -840,19 +936,33 @@ async function loadWidgetOnThePage() {
       <!-- ================================================= -->
       <div class="minimal-section" id="minimalSection">
 
-        <div class="pv-box" id="todayPV">
-          <div class="pv-label">TODAY</div>
-          <div class="pv-value" id="pageViewsToday">—</div>
+        <div class="pv-row">
+          <div class="pv-box" id="todayPV">
+            <div class="pv-label">TODAY</div>
+            <div class="pv-value" id="pageViewsToday">—</div>
+            <div class="pv-delta neutral" id="todayDelta">—</div>
+          </div>
+
+          <div class="pv-box" id="yesterdayPV">
+            <div class="pv-label">YESTERDAY</div>
+            <div class="pv-value" id="pageViewsYesterday">—</div>
+          </div>
         </div>
 
-        <div class="pv-box" id="yesterdayPV">
-          <div class="pv-label">YESTERDAY</div>
-          <div class="pv-value" id="pageViewsYesterday">—</div>
+        <div class="minimal-metrics-row">
+          <span>Visits: <strong id="minimalVisits">—</strong></span>
+          <span>UV: <strong id="minimalVisitors">—</strong></span>
         </div>
 
-        <div class="pv-box clickable" id="moreBtn">
-          <div class="pv-label">MORE</div>
-          <div class="pv-value">⋯</div>
+        <div class="minimal-footer-row">
+          <div class="minimal-total-box">
+            <div class="minimal-total-label">7D TOTAL PV</div>
+            <div class="minimal-total-value" id="minimal7dTotal">—</div>
+          </div>
+          <div class="pv-box clickable" id="moreBtn">
+            <div class="pv-label">MORE</div>
+            <div class="pv-value">⋯</div>
+          </div>
         </div>
 
       </div>
@@ -1067,12 +1177,16 @@ async function loadWidgetOnThePage() {
         }
         let resp = await checkToken();
         if (resp) {
+          const minimalData = await getPageData(MINIMAL_DATE_PRESET);
           const pageData = await getPageData(currentDatePreset);
           const countryData = await getCountryData(currentDatePreset);
           hideLoading();
-          renderMetrics(pageData);
-          updateChartTitles();
-          renderCharts(pageData, countryData);
+          if (minimalData) renderMinimalMetrics(minimalData);
+          if (pageData) {
+            renderExpandedMetrics(pageData);
+            updateChartTitles();
+            renderCharts(pageData, countryData);
+          }
           updateFilterCondition();
           await loadCustomReportTab();
           // Restore active tab
@@ -1147,13 +1261,17 @@ async function loadWidgetOnThePage() {
       hideLoading();
       return;
     }
+    const minimalData = await getPageData(MINIMAL_DATE_PRESET);
     const pageData = await getPageData(currentDatePreset);
     const countryData = await getCountryData(currentDatePreset);
     hideLoading();
 
-    renderMetrics(pageData);
-    updateChartTitles();
-    renderCharts(pageData, countryData);
+    if (minimalData) renderMinimalMetrics(minimalData);
+    if (pageData) {
+      renderExpandedMetrics(pageData);
+      updateChartTitles();
+      renderCharts(pageData, countryData);
+    }
     updateFilterCondition();
 
     // Load custom report config and show/hide row 2
@@ -1172,9 +1290,9 @@ async function loadWidgetOnThePage() {
 
     // Refresh minimal view with 7d data for today/yesterday values
     showLoading();
-    const pageData = await getPageData("7d");
+    const pageData = await getPageData(MINIMAL_DATE_PRESET);
     hideLoading();
-    if (pageData) renderMetrics(pageData);
+    if (pageData) renderMinimalMetrics(pageData);
   });
 
   /* ---------- Tab Switching ---------- */
@@ -1228,11 +1346,13 @@ async function loadWidgetOnThePage() {
       await fetchAndRenderCustomReport();
     } else {
       // Refresh page performance tab
+      const minimalData = await getPageData(MINIMAL_DATE_PRESET);
       const pageData = await getPageData(currentDatePreset);
       const countryData = await getCountryData(currentDatePreset);
       hideLoading();
+      if (minimalData) renderMinimalMetrics(minimalData);
       if (pageData && countryData) {
-        renderMetrics(pageData);
+        renderExpandedMetrics(pageData);
         updateChartTitles();
         renderCharts(pageData, countryData);
         updateFilterCondition();
@@ -1370,8 +1490,9 @@ async function loadWidgetOnThePage() {
     hideLoading();
     statusEl.textContent = "";
 
-    // Update summary metrics from new preset data
-    renderMetrics(pageData);
+    const minimalData = await getPageData(MINIMAL_DATE_PRESET);
+    if (minimalData) renderMinimalMetrics(minimalData);
+    renderExpandedMetrics(pageData);
     updateChartTitles();
     renderCharts(pageData, countryData);
     updateFilterCondition();
@@ -1477,11 +1598,13 @@ async function loadWidgetOnThePage() {
     const currentView = badge.classList.contains("expanded") ? "expanded" : "minimal";
 
     if (currentView === "expanded") {
+      const minimalData = await getPageData(MINIMAL_DATE_PRESET);
       const pageData = await getPageData(currentDatePreset);
       const countryData = await getCountryData(currentDatePreset);
       hideLoading();
+      if (minimalData) renderMinimalMetrics(minimalData);
       if (pageData && countryData) {
-        renderMetrics(pageData);
+        renderExpandedMetrics(pageData);
         updateChartTitles();
         renderCharts(pageData, countryData);
         updateFilterCondition();
@@ -1571,26 +1694,31 @@ async function loadWidgetOnThePage() {
     showLoading();
     statusEl.textContent = "";
 
-    // Minimal view always uses "7d" preset for today/yesterday
-    const pageData = await getPageData(currentDatePreset);
-    const countryData = await getCountryData(currentDatePreset);
-    if (!pageData || !countryData) {
+    const minimalData = await getPageData(MINIMAL_DATE_PRESET);
+    if (!minimalData) {
+      hideLoading();
       statusEl.textContent = "No data available for this page.";
       return;
     }
 
-    renderMetrics(pageData);
-    updateFilterCondition();
+    renderMinimalMetrics(minimalData);
 
-    // If expanded view is active, also refresh charts
     if (badge.classList.contains("expanded")) {
+      const pageData = await getPageData(currentDatePreset);
+      const countryData = await getCountryData(currentDatePreset);
+      if (pageData) {
+        renderExpandedMetrics(pageData);
+        updateChartTitles();
+      }
       if (pageData && countryData) {
         renderCharts(pageData, countryData);
       }
-      // Also refresh custom report if open
+      updateFilterCondition();
       if (tabContentCustomReport.classList.contains("active")) {
         await fetchAndRenderCustomReport();
       }
+    } else {
+      updateFilterCondition();
     }
     hideLoading();
 
@@ -1612,28 +1740,58 @@ async function loadWidgetOnThePage() {
   }
   window.refetchPageDataForSpa = refetchPageDataForSpa;
 
-  function renderMetrics(pageData) {
+  function renderMinimalMetrics(pageData) {
     if (!pageData) return;
 
     const pageViews = pageData.pageViews || [];
-
-    const totalPV = pageData.filteredTotals[0] || [];
-    const totalVisits = pageData.filteredTotals[1] || [];
-    const totalVisitors = pageData.filteredTotals[2] || [];
+    const visits = pageData.visits || [];
+    const visitors = pageData.visitors || [];
 
     const todayPV = pageViews[pageViews.length - 1] || 0;
     const yesterdayPV = pageViews[pageViews.length - 2] || 0;
+    const todayVisits = visits[visits.length - 1] || 0;
+    const todayVisitors = visitors[visitors.length - 1] || 0;
+    const total7dPV = pageData.filteredTotals?.[0] || 0;
+
+    const todayEl = badge.querySelector("#pageViewsToday");
+    const yesterdayEl = badge.querySelector("#pageViewsYesterday");
+    const deltaEl = badge.querySelector("#todayDelta");
+    const visitsEl = badge.querySelector("#minimalVisits");
+    const uvEl = badge.querySelector("#minimalVisitors");
+    const total7dEl = badge.querySelector("#minimal7dTotal");
+
+    if (todayEl) todayEl.textContent = formatLargeNumber(todayPV);
+    if (yesterdayEl) yesterdayEl.textContent = formatLargeNumber(yesterdayPV);
+    if (visitsEl) visitsEl.textContent = formatLargeNumber(todayVisits);
+    if (uvEl) uvEl.textContent = formatLargeNumber(todayVisitors);
+    if (total7dEl) total7dEl.textContent = formatLargeNumber(total7dPV);
+
+    if (deltaEl) {
+      const delta = formatPercentChange(todayPV, yesterdayPV);
+      deltaEl.textContent = delta.text;
+      deltaEl.className = delta.className;
+    }
+  }
+
+  function renderExpandedMetrics(pageData) {
+    if (!pageData) return;
+
+    const totalPV = pageData.filteredTotals?.[0] || 0;
+    const totalVisits = pageData.filteredTotals?.[1] || 0;
+    const totalVisitors = pageData.filteredTotals?.[2] || 0;
+
     const pvEl = badge.querySelector("#metricTotalPV");
     const visitsEl = badge.querySelector("#metricTotalVisits");
     const uvEl = badge.querySelector("#metricTotalVisitors");
-    const todayEl = badge.querySelector("#pageViewsToday");
-    const yesterdayEl = badge.querySelector("#pageViewsYesterday");
 
-    pvEl.textContent = formatLargeNumber(totalPV);
-    visitsEl.textContent = formatLargeNumber(totalVisits);
-    uvEl.textContent = formatLargeNumber(totalVisitors);
-    todayEl.textContent = formatLargeNumber(todayPV);
-    yesterdayEl.textContent = formatLargeNumber(yesterdayPV);
+    if (pvEl) pvEl.textContent = formatLargeNumber(totalPV);
+    if (visitsEl) visitsEl.textContent = formatLargeNumber(totalVisits);
+    if (uvEl) uvEl.textContent = formatLargeNumber(totalVisitors);
+  }
+
+  function renderMetrics(pageData) {
+    renderMinimalMetrics(pageData);
+    renderExpandedMetrics(pageData);
   }
 
   function updateChartTitles() {

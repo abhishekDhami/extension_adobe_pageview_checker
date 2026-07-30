@@ -11,6 +11,9 @@ const rsidSelect = document.getElementById("rsidSelect");
 const enableOnPageToggle = document.getElementById("enableOnPageToggle");
 const retrieveAccessTokenBtn = document.getElementById("retrieveAccessTokenBtn");
 const pageIdentifierSource = document.getElementById("pageIdentifierSource");
+const domainInput = document.getElementById("domainInput");
+const addDomainBtn = document.getElementById("addDomainBtn");
+const domainList = document.getElementById("domainList");
 let messageQueue = [],
   msgCount = 1;
 
@@ -41,6 +44,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (enableOnPage !== undefined) {
     enableOnPageToggle.checked = enableOnPage;
   }
+  await renderDomainList();
   saveConfigBtn.disabled = true;
   //populating step2 fields if already saved
   let { credsStored } = await chrome.storage.local.get(["credsStored"]);
@@ -164,7 +168,6 @@ companySelect.addEventListener("change", async () => {
   // Clear cached dimensions since RSID will change
   allDimensions = [];
   await chrome.storage.local.remove(["dimensionsList", "primaryDimensionValues", "secondaryDimensionValues"]);
-  debugger;
 
   const response = await sendMessageAsync({
     type: "FETCH_REPORT_SUITES",
@@ -574,6 +577,91 @@ retrieveAccessTokenBtn.addEventListener("click", async () => {
 enableOnPageToggle.addEventListener("change", async () => {
   const isEnabled = enableOnPageToggle.checked;
   await chrome.storage.local.set({ enableOnPage: isEnabled });
+});
+
+// =============================================
+// DOMAIN ALLOWLIST
+// =============================================
+
+function normalizeDomainInput(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./, "");
+}
+
+async function renderDomainList() {
+  const { allowedDomains } = await chrome.storage.local.get("allowedDomains");
+  const domains = Array.isArray(allowedDomains) ? allowedDomains : [];
+
+  domainList.innerHTML = "";
+
+  if (domains.length === 0) {
+    const hint = document.createElement("li");
+    hint.className = "domain-empty-hint";
+    hint.textContent = "No domains added — widget runs on all websites.";
+    domainList.appendChild(hint);
+    return;
+  }
+
+  domains.forEach((domain) => {
+    const li = document.createElement("li");
+    li.className = "domain-list-item";
+
+    const label = document.createElement("span");
+    label.textContent = domain;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "domain-remove-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", async () => {
+      const updated = domains.filter((d) => d !== domain);
+      await chrome.storage.local.set({ allowedDomains: updated });
+      await renderDomainList();
+      showMessage({ msg: `Removed ${domain}.`, type: "info" });
+    });
+
+    li.appendChild(label);
+    li.appendChild(removeBtn);
+    domainList.appendChild(li);
+  });
+}
+
+addDomainBtn.addEventListener("click", async () => {
+  const normalized = normalizeDomainInput(domainInput.value);
+  if (!normalized) {
+    showMessage({ msg: "Please enter a valid domain (e.g. example.com).", type: "error" });
+    return;
+  }
+
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(normalized) && normalized !== "localhost") {
+    showMessage({ msg: "Invalid domain format. Use example.com", type: "error" });
+    return;
+  }
+
+  const { allowedDomains } = await chrome.storage.local.get("allowedDomains");
+  const domains = Array.isArray(allowedDomains) ? [...allowedDomains] : [];
+
+  if (domains.includes(normalized)) {
+    showMessage({ msg: "Domain already added.", type: "info" });
+    return;
+  }
+
+  domains.push(normalized);
+  await chrome.storage.local.set({ allowedDomains: domains });
+  domainInput.value = "";
+  await renderDomainList();
+  showMessage({ msg: `Added ${normalized}. Widget will only appear on matching domains.`, type: "success" });
+});
+
+domainInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    addDomainBtn.click();
+  }
 });
 
 // =============================================

@@ -161,7 +161,10 @@ function getReport(pageIdentifier, reportType = "pageViews", datePreset = "7d") 
       }
       const client_id = clientCreds.client_id;
 
-      if (pageIdentifier == undefined) resolve(null);
+      if (pageIdentifier == undefined) {
+        resolve({ reportData: null, success: false });
+        return;
+      }
 
       // Use preset for date range and granularity
       const presetConfig = getDateRangeForPreset(datePreset, reportSuiteTimezone);
@@ -179,7 +182,11 @@ function getReport(pageIdentifier, reportType = "pageViews", datePreset = "7d") 
         if (pageIdentifierConfig.urlConfig?.removeHash) {
           urlObj.hash = "";
         }
-        pageIdentifierValue = urlObj.toString();
+        if (pageIdentifierConfig.urlConfig?.urlType === "path") {
+          pageIdentifierValue = urlObj.origin + urlObj.pathname;
+        } else {
+          pageIdentifierValue = urlObj.toString();
+        }
       } else if (pageIdentifierConfig.source === "title") {
         pageIdentifierValue = pageIdentifier.value;
         if (pageIdentifierConfig.titleConfig?.lowercase) {
@@ -339,7 +346,15 @@ function getReport(pageIdentifier, reportType = "pageViews", datePreset = "7d") 
         },
         body: JSON.stringify(reportReq),
       });
+      if (!resp.ok) {
+        resolve({ reportData: null, success: false, error: `Report API error (${resp.status})` });
+        return;
+      }
       const reportData = await resp.json();
+      if (reportData.error_code) {
+        resolve({ reportData: null, success: false, error: reportData.message || "Report API error" });
+        return;
+      }
       let rows = reportData?.rows || [];
       if (rows && rows.length > 0) {
         let data = null;
@@ -354,13 +369,12 @@ function getReport(pageIdentifier, reportType = "pageViews", datePreset = "7d") 
           data.filteredTotals = reportData?.summaryData?.filteredTotals || [];
         } else if (reportType === "countryData") {
           data = { countries: [], pageViews: [], rawCounts: [] };
-          let totals = reportData?.summaryData.filteredTotals[0];
+          let totals = reportData?.summaryData?.filteredTotals?.[0] || 0;
           rows.forEach((row) => {
             data.countries.push(row.value);
             data.rawCounts.push(row.data[0] || 0);
-            let prctContribution = (row.data[0] / totals) * 100;
-            prctContribution = prctContribution.toFixed(2);
-            prctContribution = parseFloat(prctContribution);
+            let prctContribution = totals > 0 ? (row.data[0] / totals) * 100 : 0;
+            prctContribution = parseFloat(prctContribution.toFixed(2));
             data.pageViews.push(prctContribution);
           });
         }
@@ -373,7 +387,7 @@ function getReport(pageIdentifier, reportType = "pageViews", datePreset = "7d") 
       return;
     } catch (error) {
       console.log("Error fetching page view data:", error);
-      resolve({ error: "Failed to fetch page view data." });
+      resolve({ reportData: null, success: false, error: "Failed to fetch page view data." });
     }
   });
 }
@@ -516,7 +530,15 @@ function getCustomReport(pageIdentifier, reportType = "pageViews", datePreset = 
         body: JSON.stringify(reportReq),
       });
 
+      if (!resp.ok) {
+        resolve({ reportData: null, success: false, error: `Report API error (${resp.status})` });
+        return;
+      }
       const reportData = await resp.json();
+      if (reportData.error_code) {
+        resolve({ reportData: null, success: false, error: reportData.message || "Report API error" });
+        return;
+      }
       let rows = reportData?.rows || [];
       if (rows && rows.length > 0) {
         let data = null;
@@ -531,11 +553,11 @@ function getCustomReport(pageIdentifier, reportType = "pageViews", datePreset = 
           data.filteredTotals = reportData?.summaryData?.filteredTotals || [];
         } else if (reportType === "countryData") {
           data = { countries: [], pageViews: [], rawCounts: [] };
-          let totals = reportData?.summaryData.filteredTotals[0];
+          let totals = reportData?.summaryData?.filteredTotals?.[0] || 0;
           rows.forEach((row) => {
             data.countries.push(row.value);
             data.rawCounts.push(row.data[0] || 0);
-            let prctContribution = (row.data[0] / totals) * 100;
+            let prctContribution = totals > 0 ? (row.data[0] / totals) * 100 : 0;
             prctContribution = parseFloat(prctContribution.toFixed(2));
             data.pageViews.push(prctContribution);
           });
@@ -550,7 +572,7 @@ function getCustomReport(pageIdentifier, reportType = "pageViews", datePreset = 
       }
     } catch (error) {
       console.log("Error fetching custom report data:", error);
-      resolve({ error: "Failed to fetch custom report data." });
+      resolve({ reportData: null, success: false, error: "Failed to fetch custom report data." });
     }
   });
 }
@@ -885,7 +907,7 @@ async function fetchReportSuites(companyId) {
   await chrome.storage.local.set({
     selectedCompanyID: companyId,
   });
-  const suitesResp = await fetch(`https://analytics.adobe.io/api/${companyId}/collections/suites?limit=30&expansion=timezoneZoneinfo`, {
+  const suitesResp = await fetch(`https://analytics.adobe.io/api/${companyId}/collections/suites?limit=100&expansion=timezoneZoneinfo`, {
     headers: { Authorization: `Bearer ${accessToken}`, "x-api-key": client_id, "x-proxy-global-company-id": companyId },
   });
   const suitesData = await suitesResp.json();
