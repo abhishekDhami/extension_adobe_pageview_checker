@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Analytics Quick PageViews",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "description": "Quickly view page views on your site using Adobe Analytics. Lightweight and secure tool for debugging tracking.",
   "icons": {
     "16": "icons/icon.png",
     "48": "icons/icon.png",
     "128": "icons/icon.png"
   },
-  "permissions": ["storage", "identity"],
-  "host_permissions": ["https://*.adobe.io/*", "https://ims-na1.adobelogin.com/*"],
+  "permissions": ["storage", "identity", "scripting"],
+  "host_permissions": ["https://*.adobe.io/*", "https://ims-na1.adobelogin.com/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
@@ -17,13 +17,6 @@
   "action": {
     "default_title": "Analytics Quick PageViews"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["lib/chart.umd.min.js", "content.js"],
-      "run_at": "document_end"
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": ["getPageIdentifiers.js"],

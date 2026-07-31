@@ -1,12 +1,35 @@
+if (globalThis.__aaPageviewsCsInit) {
+  // Content script already initialized in this tab (e.g. reinjected on open tabs)
+} else {
+  globalThis.__aaPageviewsCsInit = true;
+
 let pageIdentifier = {};
 let chartInstances = {};
 let currentDatePreset = "7d"; // default preset
 let spaDebounceTimer = null;
+let fetchPageDataAttempts = 0;
 const SPA_DEBOUNCE_MS = 1500; // debounce SPA navigation re-fetches
 const MINIMAL_DATE_PRESET = "7d";
+const MAX_FETCH_PAGE_DATA_ATTEMPTS = 15;
+const PAGE_BRIDGE_SECRET = crypto.randomUUID();
 
 if (globalThis.debugExtension === undefined) {
   globalThis.debugExtension = false;
+}
+
+function isValidBridgeEvent(e) {
+  return e?.detail?.bridgeSecret === PAGE_BRIDGE_SECRET;
+}
+
+function injectPageContextBridge() {
+  const bootstrap = document.createElement("script");
+  bootstrap.textContent = `window.__aaPvBridgeSecret=${JSON.stringify(PAGE_BRIDGE_SECRET)};`;
+  (document.head || document.documentElement).appendChild(bootstrap);
+  bootstrap.remove();
+
+  const script = document.createElement("script");
+  script.src = chrome.runtime.getURL("getPageIdentifiers.js");
+  (document.head || document.documentElement).appendChild(script);
 }
 
 function inInitCharts() {
@@ -17,12 +40,7 @@ function inInitCharts() {
 }
 inInitCharts();
 
-//Injecting script to the page
-window.addEventListener("load", () => {
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("getPageIdentifiers.js");
-  (document.head || document.documentElement).appendChild(script);
-});
+injectPageContextBridge();
 
 window.addEventListener("load", async () => {
   const isWidgetEnabled = await getEnableOnPageFlag();
@@ -38,16 +56,19 @@ window.addEventListener("load", async () => {
 });
 
 window.addEventListener("pageIdentifierWindowPathValue", async (e) => {
+  if (!isValidBridgeEvent(e)) return;
   if (!e.detail || !e.detail.pageIdentifier) return;
   pageIdentifier.value = e.detail.pageIdentifier.value;
-  await window.updateWidgetWithPageData();
+  if (typeof window.updateWidgetWithPageData === "function") {
+    await window.updateWidgetWithPageData();
+  }
 });
 
 // =====================
 // SPA Navigation Handler
 // =====================
 window.addEventListener("spaNavigationDetected", (e) => {
-  // Debounce rapid navigations
+  if (!isValidBridgeEvent(e)) return;
   if (spaDebounceTimer) clearTimeout(spaDebounceTimer);
   spaDebounceTimer = setTimeout(() => {
     handleSpaNavigation();
@@ -1692,6 +1713,7 @@ async function loadWidgetOnThePage() {
           if (globalThis.debugExtension) {
             console.error(chrome.runtime.lastError);
           }
+          resolve(false);
           return;
         }
         if (response && response.success) {
@@ -1706,12 +1728,16 @@ async function loadWidgetOnThePage() {
   async function fetchPageData() {
     let pageIdentifierResp = await fetchPageIdentifiers();
     if (pageIdentifierResp.success === false) {
-      //Try again after 2 seconds
+      fetchPageDataAttempts += 1;
+      if (fetchPageDataAttempts >= MAX_FETCH_PAGE_DATA_ATTEMPTS) {
+        return;
+      }
       setTimeout(() => {
         fetchPageData();
       }, 2000);
       return;
     } else if (pageIdentifierResp?.success === true) {
+      fetchPageDataAttempts = 0;
       await updateWidgetWithPageData();
     }
   }
@@ -2431,3 +2457,5 @@ function sendMessageAsync(message) {
     }
   });
 }
+
+} // end __aaPageviewsCsInit guard
