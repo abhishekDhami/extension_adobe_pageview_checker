@@ -111,6 +111,14 @@ function compute7dDailyAverage(pageData) {
   return Math.round(total7dPV / dayCount);
 }
 
+function applyCompactValueClass(el, formattedValue) {
+  if (!el) return;
+  const len = String(formattedValue).length;
+  el.classList.remove("pv-value-compact", "pv-value-tight");
+  if (len > 9) el.classList.add("pv-value-tight");
+  else if (len > 6) el.classList.add("pv-value-compact");
+}
+
 function normalizeDomainEntry(entry) {
   return String(entry || "")
     .trim()
@@ -169,6 +177,7 @@ async function loadWidgetOnThePage() {
       box-shadow: -4px 4px 18px rgba(0, 0, 0, .5);
 
       transition: 
+        width 0.28s cubic-bezier(.4,0,.2,1),
         max-width 0.28s cubic-bezier(.4,0,.2,1),
         opacity 0.18s ease;
       pointer-events: auto;
@@ -185,10 +194,19 @@ async function loadWidgetOnThePage() {
       display: none;
     }
 
-    /* minimal stays compact */
+    /* minimal — dynamic width between min and max */
     .badge.minimal {
-      width: 200px;
-      max-width: 200px;
+      width: fit-content;
+      min-width: 200px;
+      max-width: min(300px, 45vw);
+    }
+
+    .badge.minimal .badge-header {
+      white-space: nowrap;
+    }
+
+    .badge.minimal .badge-title {
+      font-size: clamp(11px, 2.8vw, 13px);
     }
 
     /* minimal layout — Option A */
@@ -206,15 +224,27 @@ async function loadWidgetOnThePage() {
     .pv-row .pv-box {
       flex: 1;
       min-width: 0;
+      overflow: hidden;
+    }
+
+    .badge.minimal .pv-label {
+      font-size: 9px;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .pv-substat {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 500;
       margin-top: 2px;
       line-height: 1.2;
       color: #888;
       opacity: 0.9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .minimal-metrics-row {
@@ -471,7 +501,34 @@ async function loadWidgetOnThePage() {
       font-size: 18px;
       font-weight: bold;
       color: #75c8bbff;
-      transition: color 0.3s ease, transform 0.2s ease;
+      transition: color 0.3s ease, transform 0.2s ease, font-size 0.15s ease;
+      white-space: nowrap;
+      line-height: 1.15;
+    }
+
+    .badge.minimal .pv-value {
+      font-size: clamp(14px, 4.2vw, 18px);
+    }
+
+    .badge.minimal .pv-value.pv-value-compact {
+      font-size: clamp(12px, 3.5vw, 15px);
+    }
+
+    .badge.minimal .pv-value.pv-value-tight {
+      font-size: clamp(11px, 3vw, 13px);
+    }
+
+    .badge.minimal .minimal-total-value {
+      font-size: clamp(12px, 3.8vw, 14px);
+      white-space: nowrap;
+    }
+
+    .badge.minimal .minimal-metrics-row {
+      white-space: nowrap;
+    }
+
+    .badge.minimal .minimal-metrics-row strong {
+      font-size: clamp(10px, 2.8vw, 11px);
     }
 
     .clickable {
@@ -508,6 +565,11 @@ async function loadWidgetOnThePage() {
     /* small responsive adjustments */
     @media (max-width: 480px) {
       .badge { width: 70vw; right: 6px; min-width: 200px; max-width: none; }
+      .badge.minimal {
+        width: fit-content;
+        min-width: 200px;
+        max-width: min(300px, 88vw);
+      }
     }
 
     .badge.expanded {
@@ -1747,6 +1809,13 @@ async function loadWidgetOnThePage() {
     const total7dPV = pageData.filteredTotals?.[0] || 0;
     const avg7dDaily = compute7dDailyAverage(pageData);
 
+    const todayFormatted = formatLargeNumber(todayPV);
+    const yesterdayFormatted = formatLargeNumber(yesterdayPV);
+    const visitsFormatted = formatLargeNumber(todayVisits);
+    const uvFormatted = formatLargeNumber(todayVisitors);
+    const total7dFormatted = formatLargeNumber(total7dPV);
+    const avgFormatted = formatLargeNumber(avg7dDaily);
+
     const todayEl = badge.querySelector("#pageViewsToday");
     const yesterdayEl = badge.querySelector("#pageViewsYesterday");
     const avgEl = badge.querySelector("#today7dAvg");
@@ -1754,12 +1823,21 @@ async function loadWidgetOnThePage() {
     const uvEl = badge.querySelector("#minimalVisitors");
     const total7dEl = badge.querySelector("#minimal7dTotal");
 
-    if (todayEl) todayEl.textContent = formatLargeNumber(todayPV);
-    if (yesterdayEl) yesterdayEl.textContent = formatLargeNumber(yesterdayPV);
-    if (visitsEl) visitsEl.textContent = formatLargeNumber(todayVisits);
-    if (uvEl) uvEl.textContent = formatLargeNumber(todayVisitors);
-    if (total7dEl) total7dEl.textContent = formatLargeNumber(total7dPV);
-    if (avgEl) avgEl.textContent = `7d avg: ${formatLargeNumber(avg7dDaily)}/day`;
+    if (todayEl) {
+      todayEl.textContent = todayFormatted;
+      applyCompactValueClass(todayEl, todayFormatted);
+    }
+    if (yesterdayEl) {
+      yesterdayEl.textContent = yesterdayFormatted;
+      applyCompactValueClass(yesterdayEl, yesterdayFormatted);
+    }
+    if (visitsEl) visitsEl.textContent = visitsFormatted;
+    if (uvEl) uvEl.textContent = uvFormatted;
+    if (total7dEl) {
+      total7dEl.textContent = total7dFormatted;
+      applyCompactValueClass(total7dEl, total7dFormatted);
+    }
+    if (avgEl) avgEl.textContent = `7d avg: ${avgFormatted}/day`;
   }
 
   function renderExpandedMetrics(pageData) {
