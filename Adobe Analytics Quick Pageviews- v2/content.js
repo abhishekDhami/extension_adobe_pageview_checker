@@ -104,16 +104,11 @@ function formatLargeNumber(num) {
   return num.toLocaleString();
 }
 
-function formatPercentChange(today, yesterday) {
-  if (!yesterday || yesterday === 0) {
-    if (!today || today === 0) return { text: "—", className: "pv-delta neutral" };
-    return { text: "▲ new", className: "pv-delta up" };
-  }
-  const change = ((today - yesterday) / yesterday) * 100;
-  const rounded = Math.abs(change) >= 10 ? Math.round(change) : parseFloat(change.toFixed(1));
-  if (rounded > 0) return { text: `▲ +${rounded}%`, className: "pv-delta up" };
-  if (rounded < 0) return { text: `▼ ${rounded}%`, className: "pv-delta down" };
-  return { text: "— 0%", className: "pv-delta neutral" };
+function compute7dDailyAverage(pageData) {
+  const total7dPV = pageData?.filteredTotals?.[0] || 0;
+  const dayCount = pageData?.pageViews?.length || 0;
+  if (!dayCount) return 0;
+  return Math.round(total7dPV / dayCount);
 }
 
 function normalizeDomainEntry(entry) {
@@ -213,16 +208,14 @@ async function loadWidgetOnThePage() {
       min-width: 0;
     }
 
-    .pv-delta {
+    .pv-substat {
       font-size: 10px;
-      font-weight: 600;
+      font-weight: 500;
       margin-top: 2px;
       line-height: 1.2;
+      color: #888;
+      opacity: 0.9;
     }
-
-    .pv-delta.up { color: #6dd4a8; }
-    .pv-delta.down { color: #ff7b7b; }
-    .pv-delta.neutral { color: #888; opacity: 0.8; }
 
     .minimal-metrics-row {
       display: flex;
@@ -938,9 +931,9 @@ async function loadWidgetOnThePage() {
 
         <div class="pv-row">
           <div class="pv-box" id="todayPV">
-            <div class="pv-label">TODAY</div>
+            <div class="pv-label">TODAY (SO FAR)</div>
             <div class="pv-value" id="pageViewsToday">—</div>
-            <div class="pv-delta neutral" id="todayDelta">—</div>
+            <div class="pv-substat" id="today7dAvg">7d avg: —</div>
           </div>
 
           <div class="pv-box" id="yesterdayPV">
@@ -949,7 +942,7 @@ async function loadWidgetOnThePage() {
           </div>
         </div>
 
-        <div class="minimal-metrics-row">
+        <div class="minimal-metrics-row" title="Visits and unique visitors for today (so far)">
           <span>Visits: <strong id="minimalVisits">—</strong></span>
           <span>UV: <strong id="minimalVisitors">—</strong></span>
         </div>
@@ -1752,10 +1745,11 @@ async function loadWidgetOnThePage() {
     const todayVisits = visits[visits.length - 1] || 0;
     const todayVisitors = visitors[visitors.length - 1] || 0;
     const total7dPV = pageData.filteredTotals?.[0] || 0;
+    const avg7dDaily = compute7dDailyAverage(pageData);
 
     const todayEl = badge.querySelector("#pageViewsToday");
     const yesterdayEl = badge.querySelector("#pageViewsYesterday");
-    const deltaEl = badge.querySelector("#todayDelta");
+    const avgEl = badge.querySelector("#today7dAvg");
     const visitsEl = badge.querySelector("#minimalVisits");
     const uvEl = badge.querySelector("#minimalVisitors");
     const total7dEl = badge.querySelector("#minimal7dTotal");
@@ -1765,12 +1759,7 @@ async function loadWidgetOnThePage() {
     if (visitsEl) visitsEl.textContent = formatLargeNumber(todayVisits);
     if (uvEl) uvEl.textContent = formatLargeNumber(todayVisitors);
     if (total7dEl) total7dEl.textContent = formatLargeNumber(total7dPV);
-
-    if (deltaEl) {
-      const delta = formatPercentChange(todayPV, yesterdayPV);
-      deltaEl.textContent = delta.text;
-      deltaEl.className = delta.className;
-    }
+    if (avgEl) avgEl.textContent = `7d avg: ${formatLargeNumber(avg7dDaily)}/day`;
   }
 
   function renderExpandedMetrics(pageData) {

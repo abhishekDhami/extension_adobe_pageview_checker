@@ -281,6 +281,8 @@ saveConfigBtn.onclick = async () => {
   if (saveConfigBtn.disabled) return;
   saveConfigBtn.disabled = true;
   const rsid = rsidSelect.value;
+  const { selectedrsID: previousRsid } = await chrome.storage.local.get("selectedrsID");
+  const rsidChanged = previousRsid && previousRsid !== rsid;
 
   // Find timezone for selected report suite
   let reportSuiteTimezone = null;
@@ -302,11 +304,21 @@ saveConfigBtn.onclick = async () => {
   await savePageIdentifierConfig();
   enableOnPageToggle.checked = true;
   await chrome.storage.local.set({ enableOnPage: true });
+
+  if (rsidChanged) {
+    await resetCustomReportStep4();
+    showMessage({
+      msg: "Step 4 has been reset due to report suite change. Please configure based on the latest report suite.",
+      type: "info",
+    });
+  }
+
   showMessage({ msg: "Configuration saved successfully!", type: "success" });
   showMessage({
     msg: "Now Go to any webpage, Pageview report will be shown at the header",
     type: "info",
   });
+  validateStep2AndStep3Fields();
 };
 
 clearConfigBtn.onclick = async () => {
@@ -599,9 +611,9 @@ async function renderDomainList() {
   domainList.innerHTML = "";
 
   if (domains.length === 0) {
-    const hint = document.createElement("li");
+    const hint = document.createElement("p");
     hint.className = "domain-empty-hint";
-    hint.textContent = "No domains added — widget runs on all websites.";
+    hint.textContent = "No domains added. Widget runs on all websites.";
     domainList.appendChild(hint);
     return;
   }
@@ -790,14 +802,15 @@ saveCustomReportBtn.addEventListener("click", async () => {
   showMessage({ msg: "Custom Report configuration saved!", type: "success" });
 });
 
-// Clear Custom Report config
-clearCustomReportBtn.addEventListener("click", async () => {
-  await chrome.storage.local.remove(["customReportConfig", "primaryDimensionValues", "secondaryDimensionValues"]);
+async function resetCustomReportStep4() {
+  await chrome.storage.local.remove(["customReportConfig", "primaryDimensionValues", "secondaryDimensionValues", "dimensionsList"]);
+  allDimensions = [];
 
   enableCustomReportCheckbox.checked = false;
   customReportConfigDiv.style.display = "none";
 
-  crPrimaryDimension.value = "";
+  crPrimaryDimension.innerHTML = '<option value="" disabled selected>Loading dimensions...</option>';
+  crPrimaryDimension.disabled = true;
   crPrimaryMatch.value = "exact";
   crPrimaryValueSelect.innerHTML = "<option value='' disabled selected>Select primary dimension first</option>";
   crPrimaryValueSelect.disabled = true;
@@ -805,7 +818,11 @@ clearCustomReportBtn.addEventListener("click", async () => {
   crPrimaryValueCustom.style.display = "none";
   crSecondaryDimension.innerHTML = "<option value='' disabled selected>Select primary dimension first</option>";
   crSecondaryDimension.disabled = true;
+}
 
+// Clear Custom Report config
+clearCustomReportBtn.addEventListener("click", async () => {
+  await resetCustomReportStep4();
   showMessage({ msg: "Custom Report configuration cleared.", type: "success" });
 });
 
