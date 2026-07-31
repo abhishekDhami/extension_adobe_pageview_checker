@@ -7,132 +7,14 @@ let sessionTimer = null; // Timer for automatic expiry
 const SESSION_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 const WRAPPED_KEY_STORAGE = "wrappedSessionKey";
 const DERIVED_KEY_SESSION = "derivedKeyCache";
-const CONTENT_SCRIPT_ID = "aa-pageviews-content";
 
 if (globalThis.debugExtension === undefined) {
   globalThis.debugExtension = false;
 }
 
-// =====================
-// Dynamic content script registration
-// =====================
-
-function normalizeDomainEntry(entry) {
-  return String(entry || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/^www\./, "");
-}
-
-function buildContentScriptMatches(allowedDomains) {
-  if (!allowedDomains || !Array.isArray(allowedDomains) || allowedDomains.length === 0) {
-    return ["<all_urls>"];
-  }
-
-  const matches = new Set();
-  for (const raw of allowedDomains) {
-    const domain = normalizeDomainEntry(raw);
-    if (!domain) continue;
-    if (domain === "localhost") {
-      matches.add("*://localhost/*");
-      matches.add("*://127.0.0.1/*");
-      continue;
-    }
-    matches.add(`*://${domain}/*`);
-    matches.add(`*://*.${domain}/*`);
-  }
-
-  return matches.size > 0 ? [...matches] : ["<all_urls>"];
-}
-
-function isUrlAllowedForDomains(url, allowedDomains) {
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    if (!allowedDomains || !Array.isArray(allowedDomains) || allowedDomains.length === 0) {
-      return true;
-    }
-    return allowedDomains.some((domain) => {
-      const normalized = normalizeDomainEntry(domain);
-      if (!normalized) return false;
-      return hostname === normalized || hostname.endsWith("." + normalized);
-    });
-  } catch {
-    return false;
-  }
-}
-
-async function injectIntoOpenMatchingTabs(allowedDomains) {
-  let tabs = [];
-  try {
-    tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
-  } catch {
-    return;
-  }
-
-  const files = ["lib/chart.umd.min.js", "content.js"];
-  for (const tab of tabs) {
-    if (!tab.id || !tab.url) continue;
-    if (!isUrlAllowedForDomains(tab.url, allowedDomains)) continue;
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files,
-      });
-    } catch {
-      // Tab may be restricted or script already present
-    }
-  }
-}
-
-async function updateContentScriptRegistration() {
-  try {
-    await chrome.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] });
-  } catch {
-    // Not registered yet
-  }
-
-  const { enableOnPage, allowedDomains } = await chrome.storage.local.get(["enableOnPage", "allowedDomains"]);
-  if (enableOnPage !== true) {
-    return;
-  }
-
-  const matches = buildContentScriptMatches(allowedDomains);
-  const domains = Array.isArray(allowedDomains) ? allowedDomains : [];
-
-  await chrome.scripting.registerContentScripts([
-    {
-      id: CONTENT_SCRIPT_ID,
-      js: ["lib/chart.umd.min.js", "content.js"],
-      matches,
-      runAt: "document_end",
-      persistAcrossSessions: true,
-    },
-  ]);
-
-  await injectIntoOpenMatchingTabs(domains);
-}
-
 function isTrustedExtensionSender(sender) {
   return Boolean(sender && sender.id === chrome.runtime.id);
 }
-
-chrome.runtime.onInstalled.addListener(() => {
-  updateContentScriptRegistration();
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  updateContentScriptRegistration();
-});
-
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && (changes.enableOnPage || changes.allowedDomains)) {
-    updateContentScriptRegistration();
-  }
-});
-
-updateContentScriptRegistration();
 
 // =====================
 // Date Preset Helpers

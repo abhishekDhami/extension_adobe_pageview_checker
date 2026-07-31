@@ -1,8 +1,3 @@
-if (globalThis.__aaPageviewsCsInit) {
-  // Content script already initialized in this tab (e.g. reinjected on open tabs)
-} else {
-  globalThis.__aaPageviewsCsInit = true;
-
 let pageIdentifier = {};
 let chartInstances = {};
 let currentDatePreset = "7d"; // default preset
@@ -11,25 +6,9 @@ let fetchPageDataAttempts = 0;
 const SPA_DEBOUNCE_MS = 1500; // debounce SPA navigation re-fetches
 const MINIMAL_DATE_PRESET = "7d";
 const MAX_FETCH_PAGE_DATA_ATTEMPTS = 15;
-const PAGE_BRIDGE_SECRET = crypto.randomUUID();
 
 if (globalThis.debugExtension === undefined) {
   globalThis.debugExtension = false;
-}
-
-function isValidBridgeEvent(e) {
-  return e?.detail?.bridgeSecret === PAGE_BRIDGE_SECRET;
-}
-
-function injectPageContextBridge() {
-  const bootstrap = document.createElement("script");
-  bootstrap.textContent = `window.__aaPvBridgeSecret=${JSON.stringify(PAGE_BRIDGE_SECRET)};`;
-  (document.head || document.documentElement).appendChild(bootstrap);
-  bootstrap.remove();
-
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("getPageIdentifiers.js");
-  (document.head || document.documentElement).appendChild(script);
 }
 
 function inInitCharts() {
@@ -40,7 +19,12 @@ function inInitCharts() {
 }
 inInitCharts();
 
-injectPageContextBridge();
+// Inject page-context script for window variable paths and SPA detection
+window.addEventListener("load", () => {
+  const script = document.createElement("script");
+  script.src = chrome.runtime.getURL("getPageIdentifiers.js");
+  (document.head || document.documentElement).appendChild(script);
+});
 
 window.addEventListener("load", async () => {
   const isWidgetEnabled = await getEnableOnPageFlag();
@@ -56,7 +40,6 @@ window.addEventListener("load", async () => {
 });
 
 window.addEventListener("pageIdentifierWindowPathValue", async (e) => {
-  if (!isValidBridgeEvent(e)) return;
   if (!e.detail || !e.detail.pageIdentifier) return;
   pageIdentifier.value = e.detail.pageIdentifier.value;
   if (typeof window.updateWidgetWithPageData === "function") {
@@ -68,7 +51,6 @@ window.addEventListener("pageIdentifierWindowPathValue", async (e) => {
 // SPA Navigation Handler
 // =====================
 window.addEventListener("spaNavigationDetected", (e) => {
-  if (!isValidBridgeEvent(e)) return;
   if (spaDebounceTimer) clearTimeout(spaDebounceTimer);
   spaDebounceTimer = setTimeout(() => {
     handleSpaNavigation();
@@ -2457,5 +2439,3 @@ function sendMessageAsync(message) {
     }
   });
 }
-
-} // end __aaPageviewsCsInit guard

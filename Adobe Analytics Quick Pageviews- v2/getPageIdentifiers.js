@@ -1,19 +1,4 @@
 // getPageIdentifiers.js — Injected into the PAGE context (not content script)
-// Communicates with the content script via guarded CustomEvents (bridge secret).
-
-function getBridgeSecret() {
-  return window.__aaPvBridgeSecret || null;
-}
-
-function dispatchGuardedEvent(name, detail) {
-  const bridgeSecret = getBridgeSecret();
-  if (!bridgeSecret) return;
-  window.dispatchEvent(
-    new CustomEvent(name, {
-      detail: { ...detail, bridgeSecret },
-    }),
-  );
-}
 
 // =====================
 // Page Identifier Fetch
@@ -36,7 +21,11 @@ window.addEventListener("fetchPageWindowPathIdentifiers", (e) => {
   const value = getValueByPath(window, pageIdentifier.windowPath);
   pageIdentifier.value = value;
 
-  dispatchGuardedEvent("pageIdentifierWindowPathValue", { pageIdentifier });
+  window.dispatchEvent(
+    new CustomEvent("pageIdentifierWindowPathValue", {
+      detail: { pageIdentifier },
+    }),
+  );
 });
 
 // =====================
@@ -49,7 +38,7 @@ window.addEventListener("fetchPageWindowPathIdentifiers", (e) => {
     const newUrl = location.href;
     if (newUrl !== lastUrl) {
       lastUrl = newUrl;
-      dispatchGuardedEvent("spaNavigationDetected", { url: newUrl });
+      window.dispatchEvent(new CustomEvent("spaNavigationDetected", { detail: { url: newUrl } }));
     }
   }
 
