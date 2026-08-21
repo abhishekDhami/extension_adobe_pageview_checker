@@ -700,6 +700,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     AUTHENTICATE_USER: async () => {
       let { client_id, client_secret, org_id, userpassword } = msg;
 
+      // Reauthentication uses only the encrypted credentials in storage. The
+      // user password unlocks the stored session key needed to decrypt them.
+      if (msg.reauthenticate) {
+        const passwordIsValid = await validatePassword(userpassword);
+        const storedCredentials = passwordIsValid ? await decryptClientCredentials() : null;
+        const storedData = await chrome.storage.local.get(["org_id"]);
+
+        if (!storedCredentials || !storedData.org_id) {
+          sendResponseMessage(
+            "AUTHENTICATE_USER_RESPONSE",
+            { error: "Unable to unlock saved credentials. Enter the correct local password or clear credentials and set them up again." },
+            args,
+          );
+          return;
+        }
+
+        client_id = storedCredentials.client_id;
+        client_secret = storedCredentials.client_secret;
+        org_id = storedData.org_id;
+      }
+
       const redirectUri = chrome.identity.getRedirectURL();
       const scope = "additional_info.projectedProductContext, openid, read_organizations, additional_info.job_function, AdobeID";
 

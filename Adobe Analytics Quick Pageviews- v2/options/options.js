@@ -16,6 +16,7 @@ const addDomainBtn = document.getElementById("addDomainBtn");
 const domainList = document.getElementById("domainList");
 let messageQueue = [],
   msgCount = 1;
+let hasStoredCredentials = false;
 
 if (globalThis.debugExtension === undefined) {
   globalThis.debugExtension = false;
@@ -30,12 +31,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // client_id and client_secret are encrypted — mask fields if already stored
   if (storedClientId) {
+    hasStoredCredentials = true;
     client_idElem.value = "encrypted-credentials-saved";
     client_idElem.type = "password";
     client_idElem.disabled = true;
     client_secretElem.value = "encrypted-credentials-saved";
     client_secretElem.type = "password";
     client_secretElem.disabled = true;
+    authBtn.textContent = "Reauthenticate with Saved Credentials";
   }
   if (org_id) {
     org_idElem.value = org_id;
@@ -55,13 +58,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 authBtn.addEventListener("click", async () => {
   try {
-    let client_id = document.getElementById("clientId").value.trim();
-    let client_secret = document.getElementById("clientSecret").value.trim();
-    let org_id = document.getElementById("orgid").value.trim();
     let userpassword = document.getElementById("userpassword").value;
-    if (!client_id || !client_secret || !org_id || !userpassword) {
+    if (!userpassword) {
       showMessage({
-        msg: "Please enter valid Client ID, Secret, Org ID and Password.",
+        msg: "Please enter your local password.",
         type: "error",
       });
       return;
@@ -73,6 +73,29 @@ authBtn.addEventListener("click", async () => {
       });
       return;
     }
+
+    // Saved credentials are intentionally not read from these masked fields.
+    // The background worker unlocks and decrypts them using this password.
+    if (hasStoredCredentials) {
+      chrome.runtime.sendMessage({
+        type: "AUTHENTICATE_USER",
+        reauthenticate: true,
+        userpassword,
+      });
+      return;
+    }
+
+    let client_id = document.getElementById("clientId").value.trim();
+    let client_secret = document.getElementById("clientSecret").value.trim();
+    let org_id = document.getElementById("orgid").value.trim();
+    if (!client_id || !client_secret || !org_id) {
+      showMessage({
+        msg: "Please enter valid Client ID, Secret, and Org ID.",
+        type: "error",
+      });
+      return;
+    }
+
     chrome.runtime.sendMessage({
       type: "AUTHENTICATE_USER",
       client_id,
